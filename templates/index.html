@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentiment Analysis Dashboard</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Arial', sans-serif;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: #343a40;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        #upload-form {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #upload-form button {
+            background-color: #28a745;
+            border: none;
+            color: white;
+            font-weight: bold;
+        }
+
+        .table {
+            margin-top: 20px;
+            background-color: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .table th,
+        .table td {
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .modal-header,
+        .modal-footer {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .modal-title {
+            font-weight: bold;
+        }
+
+        .btn-info {
+            background-color: #007bff;
+            border: none;
+        }
+
+        .btn-info:hover {
+            background-color: #0056b3;
+        }
+
+        .table thead th {
+            background-color: #343a40;
+            color: white;
+        }
+
+        .close {
+            color: white;
+            opacity: 1;
+        }
+
+        .form-control-file {
+            padding: 8px 12px;
+            border: 2px solid #007bff;
+            background-color: #ffffff;
+            color: #007bff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .form-control-file:hover {
+            background-color: #007bff;
+            color: #ffffff;
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+</head>
+
+<body>
+    <div class="container mt-5">
+        <h2>Product Review Emotional Sentiment Analysis</h2>
+        <form id="upload-form" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".csv, .xls, .xlsx" class="form-control-file" required>
+            <button type="submit" class="btn btn-success">
+                <i class="fas fa-upload"></i> Upload
+            </button>
+        </form>
+        <table class="table table-bordered table-hover mt-4" id="result-table">
+            <thead>
+                <tr>
+                    <th>Product Name</th>
+                    <th>Product Price</th>
+                    <th>Average Rate</th>
+                    <th>Overall Emotion</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+        </table>
+
+        <!-- Chart Section -->
+        <div class="row mt-5">
+            <div class="col-md-6">
+                <canvas id="pieChart"></canvas>
+            </div>
+            <div class="col-md-6">
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Modal for Product Details -->
+    <div class="modal fade" id="detailsModal" tabindex="-1" aria-labelledby="detailsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="detailsModalLabel">Product Details</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body" id="modal-body"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function () {
+            $('#upload-form').on('submit', function (e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+
+                $.ajax({
+                    type: 'POST',
+                    url: '/upload',
+                    data: formData,
+                    contentType: false,
+                    processData: false,
+                    success: function (data) {
+                        if (Array.isArray(data.grouped_data)) {
+                            $('#table-body').empty(); // Clear previous results
+                            data.grouped_data.forEach(function (item) {
+                                $('#table-body').append(`
+                                    <tr>
+                                        <td>${item.Product_name}</td>
+                                        <td>₹${item.Product_price}</td>
+                                        <td>${item.Rate.toFixed(2)}</td>
+                                        <td>${item.Overall_Sentiment}</td>
+                                        <td>
+                                            <button class="btn btn-info" onclick="showDetails('${item.Product_name}')">Show Details</button>
+                                        </td>
+                                    </tr>
+                                `);
+                            });
+                            // Call function to draw charts with overall sentiments
+                            drawCharts(data.overall_sentiments);
+                        } else {
+                            console.error('Expected an array but got:', data);
+                            alert('Unexpected response format from the server.');
+                        }
+                    },
+                    error: function (error) {
+                        console.error(error);
+                        alert('An error occurred while uploading the file.');
+                    }
+                });
+            });
+        });
+
+        function showDetails(productName) {
+            // Fetch product details from the server
+            $.ajax({
+                url: '/product_details',
+                method: 'GET',
+                data: {
+                    name: productName
+                },
+                success: function (data) {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        // Prepare individual reviews in a table format
+                        let individualReviews = data.Individual_Reviews || [];
+                        let reviewsHtml = `
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Review</th>
+                                <th>Summary</th>
+                                <th>Emotion</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                        individualReviews.forEach(review => {
+                            reviewsHtml += `
+                        <tr>
+                            <td>${review.Review}</td>
+                            <td>${review.Summary}</td>
+                            <td>${review.Emotion}</td> <!-- Updated to show Emotion instead of Sentiment -->
+                        </tr>
+                    `;
+                        });
+
+                        reviewsHtml += `
+                        </tbody>
+                    </table>
+                `;
+
+                        // Create the detailed information string
+                        let details = `
+                    <p><strong>Product Name:</strong> ${data.Product_name}</p>
+                    <p><strong>Product Price:</strong> ₹${data.Product_price}</p>
+                    <p><strong>Average Rate:</strong> ${data.Rate.toFixed(2)}</p>
+                    <p><strong>Overall Sentiment:</strong> ${data.Overall_Sentiment}</p>
+                    <p><strong>Individual Reviews:</strong></p>
+                    ${reviewsHtml}
+                `;
+
+                        // Insert the details into the modal content
+                        $('#modal-body').html(details); // Update this line to use the correct ID
+                        // Show the modal
+                        $('#detailsModal').modal('show');
+                    }
+                },
+                error: function (error) {
+                    console.error('Error fetching product details:', error);
+                }
+            });
+        }
+
+
+        function drawCharts(overallSentiments) {
+            const ctxPie = document.getElementById('pieChart').getContext('2d');
+            const ctxBar = document.getElementById('barChart').getContext('2d');
+
+            // Create Pie Chart with always-visible labels
+            const pieChart = new Chart(ctxPie, {
+                type: 'pie',
+                data: {
+                    labels: overallSentiments.labels,
+                    datasets: [{
+                        label: 'Overall Sentiments',
+                        data: overallSentiments.data,
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.2)',
+                            'rgba(54, 162, 235, 0.2)',
+                            'rgba(255, 206, 86, 0.2)',
+                            'rgba(75, 192, 192, 0.2)',
+                            'rgba(153, 102, 255, 0.2)',
+                            'rgba(255, 159, 64, 0.2)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)',
+                            'rgba(255, 159, 64, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Pie Chart of Overall Sentiments'
+                        },
+                        datalabels: {
+                            color: '#333',
+                            formatter: (value, context) =>
+                                `${context.chart.data.labels[context.dataIndex]}: ${value}`,
+                            font: {
+                                weight: 'bold',
+                            },
+                            anchor: 'end',
+                            align: 'start',
+                            offset: -10
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+
+            // Create Bar Chart
+            const barChart = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: overallSentiments.labels,
+                    datasets: [{
+                        label: 'Overall Sentiments',
+                        data: overallSentiments.data,
+                        backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Bar Chart of Overall Sentiments'
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+
+</html>
